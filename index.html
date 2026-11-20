@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thermal Bill Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--bg:#f4f1ec;--card:#fff;--ink:#1d1d1f;--mute:#6b6b70;--line:#e3ded6;--acc:#d9432b;--acc2:#b8361f}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:15px}
+  header{padding:18px 16px 6px;max-width:1100px;margin:0 auto}
+  header h1{margin:0;font-size:22px;letter-spacing:-.02em}
+  header p{margin:4px 0 0;color:var(--mute);font-size:13px}
+  .wrap{max-width:1100px;margin:0 auto;padding:12px 16px 40px;display:grid;gap:16px;grid-template-columns:1fr}
+  @media(min-width:900px){.wrap{grid-template-columns:1.1fr .9fr}.preview{position:sticky;top:12px;align-self:start}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);margin:0 0 10px;display:flex;justify-content:space-between;align-items:center}
+  details.card summary{cursor:pointer;list-style:none;font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--mute);font-weight:600}
+  details.card summary::after{content:"▾";float:right}
+  details[open].card summary{margin-bottom:10px}
+  label{display:block;font-size:12px;color:var(--mute);margin:8px 0 4px;font-weight:500}
+  input,select,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:9px;font:inherit;background:#fcfbf9;color:var(--ink)}
+  input:focus,select:focus,textarea:focus{outline:2px solid #f2b8ad;border-color:var(--acc)}
+  .row{display:grid;gap:8px;grid-template-columns:1fr 1fr}
+  .row3{display:grid;gap:8px;grid-template-columns:1fr 1fr 1fr}
+  .items{display:flex;flex-direction:column;gap:8px}
+  .item{display:grid;grid-template-columns:54px 1fr 78px 34px;gap:6px;align-items:center}
+  .item input{padding:9px 7px}
+  .item .amt{grid-column:2/4;font-size:12px;color:var(--mute);text-align:right;margin-top:-4px}
+  .x{border:none;background:#f3e4e0;color:var(--acc2);border-radius:8px;height:38px;font-size:18px;cursor:pointer}
+  .btn{border:none;border-radius:10px;padding:11px 14px;font:600 14px Inter,sans-serif;cursor:pointer;background:#efe9e1;color:var(--ink)}
+  .btn.primary{background:var(--acc);color:#fff}
+  .btn.primary:active{background:var(--acc2)}
+  .btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{border:1px solid var(--line);background:#fcfbf9;border-radius:999px;padding:7px 11px;font-size:13px;cursor:pointer;display:flex;gap:6px;align-items:center}
+  .chip b{color:var(--acc2);font-weight:600}
+  .chip .del{color:var(--mute);font-size:14px;padding-left:2px}
+  .menuadd{display:grid;grid-template-columns:1fr 80px auto;gap:6px;margin-top:10px}
+  .check{display:flex;align-items:center;gap:8px;font-size:14px;margin-top:10px}
+  .check input{width:auto}
+  .totals{display:flex;justify-content:space-between;margin-top:12px;padding-top:10px;border-top:1px dashed var(--line);font-weight:700;font-size:17px}
+  .preview .paper{background:#3a3a3d;border-radius:14px;padding:18px 10px;text-align:center}
+  .preview img{max-width:100%;width:340px;height:auto;filter:drop-shadow(0 6px 14px rgba(0,0,0,.35))}
+  .hint{font-size:12px;color:var(--mute);margin-top:8px;text-align:center}
+  .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;opacity:0;transition:.25s;pointer-events:none}
+  .toast.on{opacity:1}
+  #printArea{display:none}
+  @media print{
+    @page{margin:0}
+    body{background:#fff}
+    header,.wrap,.toast{display:none!important}
+    #printArea{display:block}
+    
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>🧾 Thermal Bill Generator</h1>
+  <p>Fill in your shop and items — the bill updates live. Long-press the bill to save it as an image.</p>
+</header>
+
+<div class="wrap">
+  <div>
+    <details class="card" id="shopCard">
+      <summary>Shop details</summary>
+      <label>Shop name</label><input id="shop" placeholder="Your shop name">
+      <label>Address</label><input id="addr" placeholder="Road, City, State">
+      <div class="row">
+        <div><label>GSTIN</label><input id="gstin" placeholder="Optional"></div>
+        <div><label>Tagline under GSTIN</label><input id="tag" placeholder="e.g. Composition taxable person"></div>
+      </div>
+      <label>Footer message</label><textarea id="footer" rows="2"></textarea>
+      <div class="row">
+        <div><label>Paper width</label>
+          <select id="paper"><option value="40">80 mm</option><option value="32">58 mm</option></select></div>
+        <div><label>Bill label</label>
+          <select id="label"><option value="">None</option><option>COPY</option><option>ORIGINAL</option><option>DUPLICATE</option></select></div>
+      </div>
+    </details>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Quick menu <span style="text-transform:none;letter-spacing:0;font-weight:400">tap to add</span></h2>
+      <div class="chips" id="menu"></div>
+      <div class="menuadd">
+        <input id="mName" placeholder="New menu item">
+        <input id="mRate" type="number" inputmode="decimal" placeholder="Rate">
+        <button class="btn" id="mAdd">Save</button>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Bill items</h2>
+      <div class="items" id="items"></div>
+      <div class="btns"><button class="btn" id="addRow">+ Add item</button></div>
+      <div class="totals"><span>Total</span><span id="tot">₹0.00</span></div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <h2>Bill settings</h2>
+      <div class="row">
+        <div><label>Payment</label>
+          <select id="pay"><option>CASH</option><option>UPI</option><option>CARD</option><option>CREDIT</option></select></div>
+        <div><label>Bill no.</label><input id="billno" type="number" inputmode="numeric"></div>
+      </div>
+      <div class="row">
+        <div><label>Clerk</label><input id="clerk" value="001"></div>
+        <div><label>Date &amp; time</label><input id="dt" type="datetime-local"></div>
+      </div>
+      <div class="row">
+        <div><label>GST</label>
+          <select id="taxmode"><option value="none">No tax lines</option><option value="incl">Included in prices</option><option value="excl">Added on top</option></select></div>
+        <div><label>GST rate %</label><input id="rate" type="number" inputmode="decimal" value="5"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="slip" checked> Add packing counter slip on top</label>
+      <div class="row">
+        <div><label>Print on roll as</label>
+          <select id="rollMode"><option value="one">One long strip</option><option value="split">Slip &amp; bill cut separately</option></select></div>
+        <div><label>Printable width (mm)</label><input id="printW" type="number" inputmode="decimal" placeholder="auto"></div>
+      </div>
+      <div class="hint" style="text-align:left">Roll length is automatic — the PDF is exactly as long as the bill, so the printer feeds only what's needed. Most 80 mm printers print 72 mm wide, 58 mm printers 48 mm (leave "auto").</div>
+      <label class="check"><input type="checkbox" id="nowChk" checked> Use current time on new bill</label>
+    </div>
+  </div>
+
+  <div class="preview">
+    <div class="card">
+      <h2>Preview</h2>
+      <div class="paper"><img id="out" alt="Bill preview"></div>
+      <div class="hint" id="printHint">Print makes a receipt-sized PDF (80 / 58 mm wide) — open it and print to your printer, or share it to a thermal printer app.</div>
+      <div class="btns" style="justify-content:center">
+        <button class="btn primary" id="printBtn">🖨️ Print</button>
+        <button class="btn" id="pngBtn">Save image</button>
+        <button class="btn primary" id="newBill" style="background:#2d6a4f">New bill</button>
+        <button class="btn" id="copyTxt">Copy as text</button>
+        <button class="btn" id="clear">Clear items</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<div id="printArea"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<script>
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem('bg_'+k); return v ? JSON.parse(v) : d; }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem('bg_'+k, JSON.stringify(v)); }catch(e){} }
+};
+
+const SHOP_FIELDS = ['shop','addr','gstin','tag','footer','paper','label','clerk','taxmode','rate','pay','rollMode','printW'];
+const defaults = {
+  shop:'YOUR SHOP NAME', addr:'Main Road, Your City', gstin:'', tag:'',
+  footer:'THANK YOU FOR YOUR VISIT\nPLEASE CALL AGAIN', paper:'40', label:'COPY',
+  clerk:'001', taxmode:'none', rate:'5', pay:'CASH', rollMode:'one', printW:''
+};
+let menu = store.get('menu', [
+  {n:'Handi Chicken', r:170}, {n:'Chicken Biryani 500g', r:120}, {n:'Roti Foil packing', r:11}
+]);
+let items = store.get('items', [
+  {q:1,n:'Handi Chicken',r:170},{q:1,n:'Chicken Biryani 500g',r:120},{q:4,n:'Roti Foil packing',r:11}
+]);
+
+function nowLocal(){ const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,16); }
+function money(x){ return (Math.round(x*100)/100).toFixed(2); }
+
+/* ---------- form setup ---------- */
+const saved = store.get('shopData', {});
+SHOP_FIELDS.forEach(f => { $(f).value = saved[f] ?? defaults[f]; });
+$('billno').value = store.get('billno', 1);
+$('dt').value = nowLocal();
+$('slip').checked = store.get('slip', true);
+if(!saved.shop) $('shopCard').open = true;
+
+function saveShop(){
+  const o={}; SHOP_FIELDS.forEach(f=>o[f]=$(f).value); store.set('shopData',o);
+  store.set('billno', +$('billno').value||1); store.set('slip',$('slip').checked);
+}
+
+function renderMenu(){
+  $('menu').innerHTML='';
+  menu.forEach((m,i)=>{
+    const c=document.createElement('div'); c.className='chip';
+    c.innerHTML=`<span></span><b>₹${money(m.r)}</b><span class="del" title="Remove">×</span>`;
+    c.firstChild.textContent=m.n;
+    c.onclick=e=>{
+      if(e.target.classList.contains('del')){ menu.splice(i,1); store.set('menu',menu); renderMenu(); return; }
+      const ex=items.find(it=>it.n===m.n && +it.r===+m.r);
+      if(ex) ex.q=(+ex.q||0)+1; else items.push({q:1,n:m.n,r:m.r});
+      renderItems(); update();
+    };
+    $('menu').appendChild(c);
+  });
+}
+$('mAdd').onclick=()=>{
+  const n=$('mName').value.trim(), r=parseFloat($('mRate').value);
+  if(!n||isNaN(r)) return toast('Enter item name and rate');
+  menu.push({n,r}); store.set('menu',menu); $('mName').value=''; $('mRate').value=''; renderMenu();
+};
+
+function renderItems(){
+  const box=$('items'); box.innerHTML='';
+  items.forEach((it,i)=>{
+    const d=document.createElement('div'); d.className='item';
+    d.innerHTML=`<input type="number" inputmode="decimal" placeholder="Qty">
+      <input placeholder="Item name"><input type="number" inputmode="decimal" placeholder="Rate">
+      <button class="x" title="Remove">×</button><div class="amt"></div>`;
+    const [q,n,r]=d.querySelectorAll('input');
+    q.value=it.q; n.value=it.n; r.value=it.r;
+    const amt=d.querySelector('.amt');
+    const sync=()=>{ it.q=q.value; it.n=n.value; it.r=r.value; amt.textContent='= ₹'+money((+it.q||0)*(+it.r||0)); update(); };
+    [q,n,r].forEach(el=>el.oninput=sync);
+    amt.textContent='= ₹'+money((+it.q||0)*(+it.r||0));
+    d.querySelector('.x').onclick=()=>{ items.splice(i,1); renderItems(); update(); };
+    box.appendChild(d);
+  });
+}
+$('addRow').onclick=()=>{ items.push({q:1,n:'',r:''}); renderItems(); update();
+  const ins=$('items').querySelectorAll('.item'); ins[ins.length-1].querySelectorAll('input')[1].focus(); };
+
+/* ---------- receipt text layout ---------- */
+function wrap(text,w){
+  const out=[]; String(text).split('\n').forEach(par=>{
+    let line=''; par.split(/\s+/).filter(Boolean).forEach(word=>{
+      while(word.length>w){ if(line){out.push(line);line='';} out.push(word.slice(0,w)); word=word.slice(w); }
+      if(!line) line=word; else if((line+' '+word).length<=w) line+=' '+word; else { out.push(line); line=word; }
+    });
+    out.push(line);
+  }); return out;
+}
+const padL=(s,w)=>String(s).padStart(w).slice(-w);
+const padR=(s,w)=>String(s).padEnd(w).slice(0,w);
+function lr(l,r,w){ l=String(l); r=String(r); const sp=Math.max(1,w-l.length-r.length); return (l+' '.repeat(sp)+r).slice(0,Math.max(w,l.length+r.length+1)); }
+
+function dateParts(){
+  const v=$('dt').value; const d=v?new Date(v):new Date();
+  const p=n=>String(n).padStart(2,'0');
+  return `${p(d.getDate())}/${p(d.getMonth()+1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function calc(){
+  const valid=items.filter(it=>String(it.n).trim() && (+it.q||0)>0);
+  const sub=valid.reduce((s,it)=>s+(+it.q)*(+it.r||0),0);
+  const mode=$('taxmode').value, rate=parseFloat($('rate').value)||0;
+  let taxable=sub, tax=0, total=sub;
+  if(mode==='incl'){ taxable=sub/(1+rate/100); tax=sub-taxable; }
+  if(mode==='excl'){ tax=sub*rate/100; total=sub+tax; }
+  return {valid,sub,mode,rate,taxable,tax,total};
+}
+
+// line: {t:text, a:'l'|'c', s:1|2, b:bold}
+function buildLines(){
+  const W=+$('paper').value, H=W/2, c=calc(), L=[];
+  const push=(t,a='l',s=1,b=false)=>L.push({t,a,s,b});
+  const idLine=`001 ${padL(String($('clerk').value).slice(0,3),3).replace(/ /g,'0')} ${String(+$('billno').value||1).padStart(6,'0')} 0001 ${dateParts()}`;
+  const itemRow=it=>{
+    const q=`${+it.q} x `, amt=money((+it.q)*(+it.r||0));
+    if(W>=40){
+      const nw=W-5-9-9, lines=wrap(String(it.n).toUpperCase(),nw);
+      lines.forEach((ln,i)=>push(i===0? padR(q,5)+padR(ln,nw)+padL(money(+it.r||0),9)+padL(amt,9) : ' '.repeat(5)+ln));
+    } else {
+      const nw=W-5-9, lines=wrap(String(it.n).toUpperCase(),nw);
+      lines.forEach((ln,i)=>push(i===0? padR(q,5)+padR(ln,nw)+padL(amt,9) : ' '.repeat(5)+ln));
+    }
+  };
+
+  // packing slip
+  if($('slip').checked && c.valid.length){
+    push(lr('POS NAME','PACKING COUNTER',W));
+    push('-'.repeat(W));
+    c.valid.forEach((it,i)=>{
+      const q=`${+it.q} x `, amt=money((+it.q)*(+it.r||0)), nw=W-5-10;
+      wrap(String(it.n).toUpperCase(),nw).forEach((ln,j)=>push(j===0?padR(q,5)+padR(ln,nw)+padL(amt,10):' '.repeat(5)+ln));
+      if(i<c.valid.length-1) push(' '.repeat(5)+'-'.repeat(W-5));
+    });
+    push('','c'); push('CLERK '+$('clerk').value,'c'); push(idLine,'c');
+    L.push({cut:true});
+  }
+
+  // header
+  wrap($('shop').value.toUpperCase(),W).forEach(t=>push(t,'c',1,true));
+  wrap($('addr').value.toUpperCase(),W).forEach(t=>push(t,'c'));
+  if($('gstin').value.trim()) push('GSTIN-'+$('gstin').value.trim().toUpperCase(),'c');
+  if($('tag').value.trim()) wrap($('tag').value.toUpperCase(),W).forEach(t=>push(t,'c'));
+  push('*'.repeat(W),'c'); push('*'.repeat(W),'c');
+  if($('label').value) push(`* * * * * ${$('label').value} * * * * *`,'c');
+  push('');
+  if(!c.valid.length) push('(no items)','c');
+  c.valid.forEach(itemRow);
+  push(' '.repeat(Math.floor(W/2))+'-'.repeat(W-Math.floor(W/2)));
+  push(lr('SUBTOTAL',money(c.sub),W));
+  if(c.mode==='excl'){
+    push(lr(`CGST ${c.rate/2}%`,money(c.tax/2),W));
+    push(lr(`SGST ${c.rate/2}%`,money(c.tax/2),W));
+  }
+  push(lr($('pay').value,money(c.total),H),'l',2,true);
+  if(c.mode==='incl'){
+    push(lr('TAXABLE',money(c.taxable),W));
+    push(lr(`CGST ${c.rate/2}%`,money(c.tax/2),W));
+    push(lr(`SGST ${c.rate/2}%`,money(c.tax/2),W));
+  }
+  push(''); push('');
+  push('CLERK '+$('clerk').value,'c');
+  push(idLine,'c');
+  wrap($('footer').value.toUpperCase(),W).forEach(t=>push(t,'c'));
+  return {L,W,c};
+}
+
+/* ---------- canvas render ---------- */
+function render(){
+  const {L,W}=buildLines();
+  const F=22, S=2, cv=document.createElement('canvas'), x=cv.getContext('2d');
+  x.font=`${F}px "Courier Prime", monospace`;
+  const cw=x.measureText('M').width, pad=26, lh=F*1.32;
+  const width=Math.ceil(W*cw+pad*2);
+  let h=pad*2+18; L.forEach(l=>{ h+= l.cut? 70 : (l.s===2? lh*2.05 : lh); });
+  cv.width=width*S; cv.height=h*S; x.scale(S,S);
+
+  // paper with zigzag edges
+  const zig=(y,dir)=>{ for(let i=0;i<=width;i+=10){ x.lineTo(i, y+(i/10%2? dir*6:0)); } };
+  x.fillStyle='#fdfdfb';
+  const paperSegs=[]; let y0=0, cur=pad;
+  L.forEach(l=>{ if(l.cut){ paperSegs.push([y0,cur+10]); y0=cur+60; cur+=70; } else cur+= l.s===2? lh*2.05: lh; });
+  paperSegs.push([y0,h]);
+  paperSegs.forEach(([a,b])=>{
+    x.beginPath(); x.moveTo(0,a+6); zig(a+6,-1); x.lineTo(width,b-6);
+    for(let i=width;i>=0;i-=10){ x.lineTo(i, b-6+(i/10%2?6:0)); }
+    x.closePath(); x.fill();
+  });
+
+  let y=pad+6; x.fillStyle='#222'; x.textBaseline='top';
+  L.forEach(l=>{
+    if(l.cut){ y+=70; return; }
+    const big=l.s===2, fs=big? F*2: F, cwx=big? cw*2: cw;
+    x.font=`${l.b?'700':'400'} ${fs}px "Courier Prime", monospace`;
+    const cols=big? W/2 : W, t=l.t;
+    let startX = l.a==='c' ? pad + (cols - t.length)/2*cwx : pad;
+    for(let i=0;i<t.length;i++){ x.fillText(t[i], startX+i*cwx, y); } // monospaced grid
+    y+= big? lh*2.05 : lh;
+  });
+  lastCanvas=cv; const url=cv.toDataURL('image/png'); $('out').src=url;
+}
+
+// Clean white canvas for printing (no zigzag, no transparency). segment: lines without cut markers.
+function printCanvas(L,W,withCut){
+  const F=22, S=3, x0=document.createElement('canvas').getContext('2d');
+  x0.font=`${F}px "Courier Prime", monospace`;
+  const cw=x0.measureText('M').width, padX=4, padY=10, lh=F*1.32, cutH=lh*1.6;
+  const width=Math.ceil(W*cw+padX*2);
+  let h=padY*2; L.forEach(l=>{ h+= l.cut? cutH : (l.s===2? lh*2.05 : lh); });
+  const cv=document.createElement('canvas'), x=cv.getContext('2d');
+  cv.width=width*S; cv.height=Math.ceil(h*S); x.scale(S,S);
+  x.fillStyle='#fff'; x.fillRect(0,0,width,h);
+  let y=padY; x.fillStyle='#000'; x.textBaseline='top';
+  L.forEach(l=>{
+    if(l.cut){ x.font=`${F}px "Courier Prime", monospace`; const t='- - - - - - - ✂ - - - - - - -'.slice(0,W);
+      x.fillText(t, padX+(W-t.length)/2*cw, y+lh*0.3); y+=cutH; return; }
+    const big=l.s===2, fs=big? F*2: F, cwx=big? cw*2: cw;
+    x.font=`${l.b||big?'700':'400'} ${fs}px "Courier Prime", monospace`;
+    const cols=big? W/2 : W, t=l.t, sx = l.a==='c' ? padX+(cols-t.length)/2*cwx : padX;
+    for(let i=0;i<t.length;i++) x.fillText(t[i], sx+i*cwx, y);
+    y+= big? lh*2.05 : lh;
+  });
+  return cv;
+}
+function printSegments(){
+  const {L,W}=buildLines();
+  if($('rollMode').value==='one') return [printCanvas(L,W)];
+  const segs=[[]]; L.forEach(l=>{ if(l.cut) segs.push([]); else segs[segs.length-1].push(l); });
+  return segs.filter(s=>s.length).map(s=>printCanvas(s,W));
+}
+function printDims(){
+  const roll=+$('paper').value===40?80:58, pw=parseFloat($('printW').value)||(roll===80?72:48);
+  return {roll, pw:Math.min(pw,roll)};
+}
+
+function asText(){
+  const {L,W}=buildLines();
+  return L.map(l=>{
+    if(l.cut) return '\n'+'- '.repeat(W/2)+'\n';
+    if(l.a==='c'){ const p=Math.max(0,Math.floor((W-l.t.length)/2)); return ' '.repeat(p)+l.t; }
+    return l.t;
+  }).join('\n');
+}
+
+let raf=null, lastCanvas=null, dl=null;
+if(window.claude&&claude.use) claude.use('downloads').then(d=>{dl=d;}).catch(()=>{});
+function update(){
+  const c=calc(); $('tot').textContent='₹'+money(c.total);
+  store.set('items',items); saveShop();
+  cancelAnimationFrame(raf); raf=requestAnimationFrame(render);
+}
+
+function toast(m){ const t=$('toast'); t.textContent=m; t.classList.add('on'); setTimeout(()=>t.classList.remove('on'),1800); }
+
+[...SHOP_FIELDS,'billno','dt','slip'].forEach(f=>{ $(f).addEventListener('input',update); $(f).addEventListener('change',update); });
+
+$('newBill').onclick=()=>{
+  $('billno').value=(+$('billno').value||0)+1;
+  if($('nowChk').checked) $('dt').value=nowLocal();
+  items=[]; renderItems(); update(); toast('New bill #'+$('billno').value);
+};
+$('clear').onclick=()=>{ items=[]; renderItems(); update(); };
+$('copyTxt').onclick=async()=>{
+  try{ await navigator.clipboard.writeText(asText()); toast('Bill copied as text'); }
+  catch(e){ toast('Copy not allowed here'); }
+};
+
+function fileBase(){ return 'bill-'+String(+$('billno').value||1).padStart(6,'0'); }
+async function offer(filename,data){
+  if(!dl){ return false; }
+  try{ await dl.save({filename,data}); toast('Saved '+filename); }
+  catch(e){ if(e&&e.code==='declined') toast('Cancelled'); else toast('Could not save here'); }
+  return true;
+}
+function makePdf(){
+  const {roll,pw}=printDims(), off=(roll-pw)/2, {jsPDF}=window.jspdf;
+  let pdf=null;
+  printSegments().forEach(cv=>{
+    const h=cv.height/cv.width*pw+4; // 2mm feed top & bottom
+    const fmt=[roll,h], ori=h>roll?'portrait':'landscape';
+    if(!pdf) pdf=new jsPDF({unit:'mm',format:fmt,orientation:ori,compress:true});
+    else pdf.addPage(fmt,ori);
+    pdf.addImage(cv.toDataURL('image/png'),'PNG',off,2,pw,cv.height/cv.width*pw);
+  });
+  return pdf.output('blob');
+}
+function fillPrintArea(){
+  const {roll,pw}=printDims(), a=$('printArea'); a.innerHTML='';
+  printSegments().forEach((cv,i)=>{ const im=new Image(); im.src=cv.toDataURL('image/png');
+    im.style.cssText=`width:${pw}mm;margin:2mm auto;display:block;${i?'page-break-before:always;':''}`; a.appendChild(im); });
+  let st=document.getElementById('pageSize'); if(!st){st=document.createElement('style');st.id='pageSize';document.head.appendChild(st);}
+  st.textContent='@media print{@page{size:'+roll+'mm auto;margin:0}}';
+}
+$('printBtn').onclick=async()=>{
+  if(!lastCanvas) return;
+  fillPrintArea();
+  if(window.jspdf && dl){ await offer(fileBase()+'.pdf', makePdf()); return; }
+  try{ window.print(); }catch(e){}
+  if(!dl) toast('If nothing opened, open this page in your browser and tap Print');
+};
+$('pngBtn').onclick=async()=>{
+  if(!lastCanvas) return;
+  const blob=await new Promise(r=>lastCanvas.toBlob(r,'image/png'));
+  if(!(await offer(fileBase()+'.png', blob))) toast('Long-press the bill to save the image');
+};
+
+renderMenu(); renderItems();
+(document.fonts? document.fonts.load('22px "Courier Prime"').then(()=>document.fonts.load('700 22px "Courier Prime"')) : Promise.resolve())
+  .catch(()=>{}).finally(update);
+</script>
+</body>
+</html>
