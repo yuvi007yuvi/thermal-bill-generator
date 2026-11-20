@@ -76,7 +76,7 @@
       <label>Footer message</label><textarea id="footer" rows="2"></textarea>
       <div class="row">
         <div><label>Paper width</label>
-          <select id="paper"><option value="40">80 mm</option><option value="32">58 mm</option></select></div>
+          <select id="paper"><option value="32">58 mm (2 inch)</option><option value="40">80 mm (3 inch)</option></select></div>
         <div><label>Bill label</label>
           <select id="label"><option value="">None</option><option>COPY</option><option>ORIGINAL</option><option>DUPLICATE</option></select></div>
       </div>
@@ -123,6 +123,12 @@
       </div>
       <div class="hint" style="text-align:left">Roll length is automatic — the PDF is exactly as long as the bill, so the printer feeds only what's needed. Most 80 mm printers print 72 mm wide, 58 mm printers 48 mm (leave "auto").</div>
       <label class="check"><input type="checkbox" id="nowChk" checked> Use current time on new bill</label>
+      <label>Bluetooth printing method</label>
+      <select id="btMode">
+        <option value="rawbt">RawBT app (Android, works with most printers)</option>
+        <option value="direct">Direct from browser (Chrome, BLE printers only)</option>
+      </select>
+      <div class="hint" style="text-align:left">For RawBT: install <b>RawBT</b> from the Play Store, open it once, pair your printer in phone Bluetooth settings, then select it in RawBT. Choose 58 mm paper above for a 2-inch printer.</div>
     </div>
   </div>
 
@@ -130,9 +136,11 @@
     <div class="card">
       <h2>Preview</h2>
       <div class="paper"><img id="out" alt="Bill preview"></div>
-      <div class="hint" id="printHint">Print makes a receipt-sized PDF (80 / 58 mm wide) — open it and print to your printer, or share it to a thermal printer app.</div>
+      <div class="hint" id="btStatus"></div>
+      <div class="hint" id="printHint">Bluetooth print sends the bill straight to your thermal printer. PDF makes a roll-sized file instead.</div>
       <div class="btns" style="justify-content:center">
-        <button class="btn primary" id="printBtn">🖨️ Print</button>
+        <button class="btn primary" id="btPrint">🖨️ Print to Bluetooth printer</button>
+        <button class="btn" id="printBtn">PDF</button>
         <button class="btn" id="pngBtn">Save image</button>
         <button class="btn primary" id="newBill" style="background:#2d6a4f">New bill</button>
         <button class="btn" id="copyTxt">Copy as text</button>
@@ -152,11 +160,11 @@ const store = {
   set(k, v){ try{ localStorage.setItem('bg_'+k, JSON.stringify(v)); }catch(e){} }
 };
 
-const SHOP_FIELDS = ['shop','addr','gstin','tag','footer','paper','label','clerk','taxmode','rate','pay','rollMode','printW'];
+const SHOP_FIELDS = ['shop','addr','gstin','tag','footer','paper','label','clerk','taxmode','rate','pay','rollMode','printW','btMode'];
 const defaults = {
   shop:'YOUR SHOP NAME', addr:'Main Road, Your City', gstin:'', tag:'',
-  footer:'THANK YOU FOR YOUR VISIT\nPLEASE CALL AGAIN', paper:'40', label:'COPY',
-  clerk:'001', taxmode:'none', rate:'5', pay:'CASH', rollMode:'one', printW:''
+  footer:'THANK YOU FOR YOUR VISIT\nPLEASE CALL AGAIN', paper:'32', label:'COPY',
+  clerk:'001', taxmode:'none', rate:'5', pay:'CASH', rollMode:'one', printW:'', btMode:'rawbt'
 };
 let menu = store.get('menu', [
   {n:'Handi Chicken', r:170}, {n:'Chicken Biryani 500g', r:120}, {n:'Roti Foil packing', r:11}
@@ -257,6 +265,8 @@ function buildLines(){
   const W=+$('paper').value, H=W/2, c=calc(), L=[];
   const push=(t,a='l',s=1,b=false)=>L.push({t,a,s,b});
   const idLine=`001 ${padL(String($('clerk').value).slice(0,3),3).replace(/ /g,'0')} ${String(+$('billno').value||1).padStart(6,'0')} 0001 ${dateParts()}`;
+  const idShort=`BILL ${String(+$('billno').value||1).padStart(6,'0')}  ${dateParts()}`;
+  const idL = W>=40 ? idLine : idShort;
   const itemRow=it=>{
     const q=`${+it.q} x `, amt=money((+it.q)*(+it.r||0));
     if(W>=40){
@@ -277,7 +287,7 @@ function buildLines(){
       wrap(String(it.n).toUpperCase(),nw).forEach((ln,j)=>push(j===0?padR(q,5)+padR(ln,nw)+padL(amt,10):' '.repeat(5)+ln));
       if(i<c.valid.length-1) push(' '.repeat(5)+'-'.repeat(W-5));
     });
-    push('','c'); push('CLERK '+$('clerk').value,'c'); push(idLine,'c');
+    push('','c'); push('CLERK '+$('clerk').value,'c'); push(idL,'c');
     L.push({cut:true});
   }
 
@@ -305,7 +315,7 @@ function buildLines(){
   }
   push(''); push('');
   push('CLERK '+$('clerk').value,'c');
-  push(idLine,'c');
+  push(idL,'c');
   wrap($('footer').value.toUpperCase(),W).forEach(t=>push(t,'c'));
   return {L,W,c};
 }
@@ -448,6 +458,75 @@ $('pngBtn').onclick=async()=>{
   const blob=await new Promise(r=>lastCanvas.toBlob(r,'image/png'));
   if(!(await offer(fileBase()+'.png', blob))) toast('Long-press the bill to save the image');
 };
+
+/* ---------- ESC/POS for Bluetooth thermal printers ---------- */
+function escposBytes(){
+  const {L,W}=buildLines(), b=[];
+  const t=str=>{ for(const ch of str){ const c=ch.charCodeAt(0); b.push(c<128?c:63); } };
+  b.push(27,64);                    // initialise
+  b.push(27,51,30);                 // line spacing
+  L.forEach(l=>{
+    if(l.cut){
+      if($('rollMode').value==='split'){ b.push(27,100,6); }
+      else { b.push(27,100,1); t('- - - - - - - - - - - - - - - - - - - -'.slice(0,W)); b.push(10); b.push(27,100,1); }
+      return;
+    }
+    const big=l.s===2, cols=big?W/2:W;
+    if(l.b||big) b.push(27,69,1);
+    if(big) b.push(29,33,0x11);
+    let str=l.t;
+    if(l.a==='c'){ str=' '.repeat(Math.max(0,Math.floor((cols-str.length)/2)))+str; }
+    str=str.replace(/\s+$/,'');
+    t(str); b.push(10);
+    if(big) b.push(29,33,0);
+    if(l.b||big) b.push(27,69,0);
+  });
+  b.push(27,100,4);                 // feed so the bill clears the tear bar
+  return new Uint8Array(b);
+}
+function b64(bytes){ let s=''; for(let i=0;i<bytes.length;i++) s+=String.fromCharCode(bytes[i]); return btoa(s); }
+function setBt(msg){ $('btStatus').textContent=msg; }
+
+function printRawBT(){
+  const data=b64(escposBytes());
+  const android=/Android/i.test(navigator.userAgent);
+  const url=android
+    ? 'intent:base64,'+data+'#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;'
+    : 'rawbt:base64,'+data;
+  const a=document.createElement('a'); a.href=url; a.rel='noopener'; document.body.appendChild(a); a.click(); a.remove();
+  setBt('Sent to RawBT. If nothing happens, install RawBT and open this site from GitHub Pages in Chrome.');
+}
+
+let btChar=null, btDev=null;
+const BT_SERVICES=['000018f0-0000-1000-8000-00805f9b34fb','0000ff00-0000-1000-8000-00805f9b34fb',
+  '49535343-fe7d-4ae5-8fa9-9fafd205e455','e7810a71-73ae-499d-8c15-faa9aef0c3f2','0000fee7-0000-1000-8000-00805f9b34fb',
+  '0000ffe0-0000-1000-8000-00805f9b34fb','0000ae30-0000-1000-8000-00805f9b34fb'];
+async function btConnect(){
+  btDev=await navigator.bluetooth.requestDevice({acceptAllDevices:true, optionalServices:BT_SERVICES});
+  const server=await btDev.gatt.connect();
+  for(const svc of await server.getPrimaryServices()){
+    for(const c of await svc.getCharacteristics()){
+      if(c.properties.writeWithoutResponse||c.properties.write){ btChar=c; return; }
+    }
+  }
+  throw new Error('This printer has no BLE print channel — use the RawBT method');
+}
+async function printDirect(){
+  if(!navigator.bluetooth){ setBt('This browser cannot use Bluetooth directly. Switch to the RawBT method.'); return; }
+  try{
+    if(!btChar || !btDev.gatt.connected){ setBt('Choose your printer…'); await btConnect(); }
+    setBt('Printing on '+(btDev.name||'printer')+'…');
+    const bytes=escposBytes();
+    for(let i=0;i<bytes.length;i+=100){
+      const chunk=bytes.slice(i,i+100);
+      if(btChar.properties.writeWithoutResponse) await btChar.writeValueWithoutResponse(chunk);
+      else await btChar.writeValue(chunk);
+      await new Promise(r=>setTimeout(r,25));
+    }
+    setBt('Printed on '+(btDev.name||'printer')+' ✓');
+  }catch(e){ btChar=null; setBt((e&&e.message)||'Bluetooth printing failed — try the RawBT method'); }
+}
+$('btPrint').onclick=()=>{ $('btMode').value==='direct' ? printDirect() : printRawBT(); };
 
 renderMenu(); renderItems();
 (document.fonts? document.fonts.load('22px "Courier Prime"').then(()=>document.fonts.load('700 22px "Courier Prime"')) : Promise.resolve())
