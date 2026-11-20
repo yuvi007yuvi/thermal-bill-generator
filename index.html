@@ -48,6 +48,17 @@
   .toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:#222;color:#fff;padding:10px 16px;border-radius:10px;font-size:13px;opacity:0;transition:.25s;pointer-events:none}
   .toast.on{opacity:1}
   #printArea{display:none}
+  .chooser{position:fixed;inset:0;background:rgba(20,20,22,.6);display:flex;align-items:center;justify-content:center;z-index:50;padding:16px}
+  .chooser.hide{display:none}
+  .chooser .box{background:#fff;border-radius:16px;padding:18px;max-width:520px;width:100%}
+  .chooser h3{margin:0 0 4px;font-size:18px}
+  .chooser p{margin:0 0 14px;color:var(--mute);font-size:13px}
+  .fmt{display:block;width:100%;text-align:left;border:2px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:#fcfbf9;cursor:pointer;font:inherit}
+  .fmt.sel{border-color:var(--acc)}
+  .fmt b{display:block;font-size:15px;margin-bottom:3px}
+  .fmt span{font-size:12.5px;color:var(--mute)}
+  .fmt pre{font:11px/1.25 'Courier Prime',monospace;background:#fff;border:1px dashed var(--line);border-radius:8px;padding:6px 8px;margin:8px 0 0;overflow:hidden;color:#222}
+  .fmtbar{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:16px;font-size:14px}
   @media print{
     @page{margin:0}
     body{background:#fff}
@@ -65,12 +76,14 @@
 
 <div class="wrap">
   <div>
+    <input type="hidden" id="fmt"><div class="fmtbar"><span>Format: <b id="fmtName"></b></span><button class="btn" id="fmtChange">Change</button></div>
     <details class="card" id="shopCard">
       <summary>Shop details</summary>
       <label>Shop name</label><input id="shop" placeholder="Your shop name">
       <label>Address</label><input id="addr" placeholder="Road, City, State">
-      <div class="row">
+      <div class="row3">
         <div><label>GSTIN</label><input id="gstin" placeholder="Optional"></div>
+        <div><label>FSSAI / licence no.</label><input id="fssai" placeholder="Optional (Format 2)"></div>
         <div><label>Tagline under GSTIN</label><input id="tag" placeholder="e.g. Composition taxable person"></div>
       </div>
       <label>Footer message</label><textarea id="footer" rows="2"></textarea>
@@ -108,7 +121,7 @@
       </div>
       <div class="row">
         <div><label>Clerk</label><input id="clerk" value="001"></div>
-        <div><label>Date &amp; time</label><input id="dt" type="datetime-local"></div>
+        <div><label>Date &amp; time</label><input id="dt" type="datetime-local" step="1"></div>
       </div>
       <div class="row">
         <div><label>GST</label>
@@ -150,6 +163,25 @@
   </div>
 </div>
 <div class="toast" id="toast"></div>
+<div class="chooser" id="chooser">
+  <div class="box">
+    <h3>Choose a bill format</h3>
+    <p>You can change it later from the top of the page.</p>
+    <button class="fmt" data-f="classic"><b>Format 1 · Classic POS</b><span>Starred header, qty × rate rows, big payment total, clerk line, optional packing slip.</span>
+<pre>      YOUR SHOP NAME
+******************************
+1 x  ITEM NAME   120.00 120.00
+SUBTOTAL               334.00
+CASH            334.00</pre></button>
+    <button class="fmt" data-f="gst"><b>Format 2 · GST table</b><span>Bold shop name, GSTIN &amp; FSSAI, SR / ITEM / QTY / MRP / AMOUNT table, SGST + CGST breakup, grand total.</span>
+<pre>       YOUR SHOP NAME
+BILL NO : 1 DT : 20/11/26
+SR ITEM      QTY  MRP  AMOUNT
+ 1 ITEM NAME   1 280.00 280.00
+SGST @ 2.50%  :         6.666
+GRAND TOTAL   :  Rs.   280.00</pre></button>
+  </div>
+</div>
 <div id="printArea"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
@@ -160,11 +192,11 @@ const store = {
   set(k, v){ try{ localStorage.setItem('bg_'+k, JSON.stringify(v)); }catch(e){} }
 };
 
-const SHOP_FIELDS = ['shop','addr','gstin','tag','footer','paper','label','clerk','taxmode','rate','pay','rollMode','printW','btMode'];
+const SHOP_FIELDS = ['shop','addr','gstin','tag','footer','paper','label','clerk','taxmode','rate','pay','rollMode','printW','btMode','fssai','fmt'];
 const defaults = {
   shop:'YOUR SHOP NAME', addr:'Main Road, Your City', gstin:'', tag:'',
   footer:'THANK YOU FOR YOUR VISIT\nPLEASE CALL AGAIN', paper:'32', label:'COPY',
-  clerk:'001', taxmode:'none', rate:'5', pay:'CASH', rollMode:'one', printW:'', btMode:'rawbt'
+  clerk:'001', taxmode:'none', rate:'5', pay:'CASH', rollMode:'one', printW:'', btMode:'rawbt', fssai:'', fmt:''
 };
 let menu = store.get('menu', [
   {n:'Handi Chicken', r:170}, {n:'Chicken Biryani 500g', r:120}, {n:'Roti Foil packing', r:11}
@@ -173,7 +205,7 @@ let items = store.get('items', [
   {q:1,n:'Handi Chicken',r:170},{q:1,n:'Chicken Biryani 500g',r:120},{q:4,n:'Roti Foil packing',r:11}
 ]);
 
-function nowLocal(){ const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,16); }
+function nowLocal(){ const d=new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset()); return d.toISOString().slice(0,19); }
 function money(x){ return (Math.round(x*100)/100).toFixed(2); }
 
 /* ---------- form setup ---------- */
@@ -261,7 +293,59 @@ function calc(){
 }
 
 // line: {t:text, a:'l'|'c', s:1|2, b:bold}
+function buildLinesGst(){
+  const W=+$('paper').value, c=calc(), L=[];
+  const push=(t,a='l',s=1,b=false)=>L.push({t,a,s,b});
+  const dash='-'.repeat(W);
+  const v=$('dt').value, d=v?new Date(v):new Date(), p=n=>String(n).padStart(2,'0');
+  const dt=`${p(d.getDate())}/${p(d.getMonth()+1)}/${String(d.getFullYear()).slice(2)}`, tm=`${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+  wrap($('shop').value.toUpperCase(),W/2).forEach(t=>push(t,'c',2,true));
+  wrap($('addr').value.toUpperCase(),W).forEach(t=>push(t,'c',1,true));
+  if($('gstin').value.trim()) push('GSTIN '+$('gstin').value.trim().toUpperCase(),'c',1,true);
+  if($('fssai').value.trim()) push('FSSAI '+$('fssai').value.trim().toUpperCase(),'c',1,true);
+  if($('tag').value.trim()) wrap($('tag').value.toUpperCase(),W).forEach(t=>push(t,'c'));
+  const bn=+$('billno').value||1;
+  const head=`BILL NO : ${bn} DT : ${dt} TM: ${tm}`;
+  if(head.length<=W) push(head); else { push(lr(`BILL NO : ${bn}`,`DT : ${dt}`,W)); push(lr('',`TM : ${tm}`,W)); }
+  if($('label').value) push(`*** ${$('label').value} ***`,'c');
+  push(dash);
+  const wide=W>=40, qW=4, mW=wide?9:0, aW=9, sW=3, nW=W-sW-qW-mW-aW;
+  push(padR('SR',sW)+padR('ITEM',nW)+padL('QTY',qW)+(wide?padL('MRP',mW):'')+padL('AMOUNT',aW));
+  push(dash);
+  if(!c.valid.length) push('(no items)','c');
+  let qtot=0;
+  c.valid.forEach((it,i)=>{
+    qtot+=(+it.q);
+    const lines=wrap(String(it.n).toUpperCase(),nW-1);
+    lines.forEach((ln,j)=>push(j===0
+      ? padL(i+1,sW-1)+' '+padR(ln,nW)+padL(+it.q,qW)+(wide?padL(money(+it.r||0),mW):'')+padL(money((+it.q)*(+it.r||0)),aW)
+      : ' '.repeat(sW)+ln));
+  });
+  push(dash);
+  push(lr(`ITEM: ${c.valid.length} QTY: ${qtot}`,`AMOUNT: ${padL(money(c.sub),9)}`,W));
+  push(dash);
+  if(c.mode!=='none'){
+    push(c.mode==='incl'?'INCLUSIVE OF ALL TAXES':'TAXES EXTRA','c');
+    push(dash);
+    const half=(c.rate/2).toFixed(2), col=Math.floor(W*0.55);
+    const tl=(a,b,val)=>push(padR(b? padR(a,Math.min(11,col-9))+b : a,col)+':'+padL(val,W-col-1));
+    tl('SGST','@ '+half+'%',(c.tax/2).toFixed(3));
+    tl('CGST','@ '+half+'%',(c.tax/2).toFixed(3));
+    tl('TOTAL GST','',money(c.tax));
+    push(dash);
+  }
+  const gcol=Math.floor(W*0.55);
+  push(padR('GRAND TOTAL',gcol)+': Rs.'+padL(money(c.total),W-gcol-5),'l',1,true);
+  push(dash);
+  wrap($('footer').value.toUpperCase(),W).forEach(t=>push(t,'c'));
+  return {L,W,c};
+}
+
 function buildLines(){
+  if($('fmt').value==='gst') return buildLinesGst();
+  return buildLinesClassic();
+}
+function buildLinesClassic(){
   const W=+$('paper').value, H=W/2, c=calc(), L=[];
   const push=(t,a='l',s=1,b=false)=>L.push({t,a,s,b});
   const idLine=`001 ${padL(String($('clerk').value).slice(0,3),3).replace(/ /g,'0')} ${String(+$('billno').value||1).padStart(6,'0')} 0001 ${dateParts()}`;
@@ -527,6 +611,22 @@ async function printDirect(){
   }catch(e){ btChar=null; setBt((e&&e.message)||'Bluetooth printing failed — try the RawBT method'); }
 }
 $('btPrint').onclick=()=>{ $('btMode').value==='direct' ? printDirect() : printRawBT(); };
+
+const FMT_NAMES={classic:'Format 1 · Classic POS',gst:'Format 2 · GST table'};
+function setFmt(f){
+  $('fmt').value=f; $('fmtName').textContent=FMT_NAMES[f];
+  document.querySelectorAll('.fmt').forEach(b=>b.classList.toggle('sel',b.dataset.f===f));
+  $('slip').closest('label').style.display = f==='classic' ? '' : 'none';
+  if(f==='gst' && $('taxmode').value==='none') $('taxmode').value='incl';
+  $('chooser').classList.add('hide'); update();
+}
+document.querySelectorAll('.fmt').forEach(b=>b.onclick=()=>setFmt(b.dataset.f));
+$('fmtChange').onclick=()=>$('chooser').classList.remove('hide');
+// always ask first; highlight the last one used
+document.querySelectorAll('.fmt').forEach(b=>b.classList.toggle('sel',b.dataset.f===$('fmt').value));
+if(!$('fmt').value) $('fmt').value='classic';
+$('fmtName').textContent=FMT_NAMES[$('fmt').value];
+$('slip').closest('label').style.display = $('fmt').value==='classic' ? '' : 'none';
 
 renderMenu(); renderItems();
 (document.fonts? document.fonts.load('22px "Courier Prime"').then(()=>document.fonts.load('700 22px "Courier Prime"')) : Promise.resolve())
